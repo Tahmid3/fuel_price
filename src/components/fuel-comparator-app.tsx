@@ -32,7 +32,6 @@ export function FuelComparatorApp() {
   const [stations, setStations] = useState<FuelStation[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [usingDemoData, setUsingDemoData] = useState(false);
 
   const calculations = useMemo(() => {
     return stations
@@ -55,37 +54,29 @@ export function FuelComparatorApp() {
 
   const absoluteBest = calculations[0];
 
-  const loadStationsForCoordinates = async (lat: number, lng: number) => {
+  const loadStations = () => {
     setError(null);
     setLoading(true);
 
-    try {
-      const data = await fetchFuelStations({ lat, lng, type: fuelType });
-      setStations(data);
-      const hasApiKey = Boolean(process.env.NEXT_PUBLIC_TANKERKOENIG_KEY);
-      setUsingDemoData(!hasApiKey);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unknown fetch error';
-      setError(message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadStations = () => {
-    if (!navigator.geolocation) {
-      setUsingDemoData(true);
-      void loadStationsForCoordinates(52.52, 13.405);
-      return;
-    }
-
     navigator.geolocation.getCurrentPosition(
-      (position) => {
-        void loadStationsForCoordinates(position.coords.latitude, position.coords.longitude);
+      async (position) => {
+        try {
+          const data = await fetchFuelStations({
+            lat: position.coords.latitude,
+            lng: position.coords.longitude,
+            type: fuelType,
+          });
+          setStations(data);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : 'Unknown fetch error';
+          setError(message);
+        } finally {
+          setLoading(false);
+        }
       },
       () => {
-        setUsingDemoData(true);
-        void loadStationsForCoordinates(52.52, 13.405);
+        setLoading(false);
+        setError('Please allow location access to fetch nearby station prices.');
       }
     );
   };
@@ -106,9 +97,7 @@ export function FuelComparatorApp() {
             <div className="space-y-2">
               <Label>Fuel type</Label>
               <Select value={fuelType} onValueChange={(value: FuelType) => setFuelType(value)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
+                <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="e5">E5</SelectItem>
                   <SelectItem value="e10">E10</SelectItem>
@@ -126,14 +115,10 @@ export function FuelComparatorApp() {
             <div className="space-y-2">
               <Label>Payback coupon</Label>
               <Select value={String(couponMultiplier)} onValueChange={(v) => setCouponMultiplier(Number(v) as CouponMultiplier)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
+                <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {couponOptions.map((option) => (
-                    <SelectItem key={option.value} value={String(option.value)}>
-                      {option.label}
-                    </SelectItem>
+                    <SelectItem key={option.value} value={String(option.value)}>{option.label}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -156,17 +141,8 @@ export function FuelComparatorApp() {
           </div>
 
           <Button className="w-full" onClick={loadStations} disabled={loading}>
-            {loading ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading station prices...
-              </>
-            ) : (
-              <>
-                <MapPin className="mr-2 h-4 w-4" /> Find cheapest nearby option
-              </>
-            )}
+            {loading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading live prices...</> : <><MapPin className="mr-2 h-4 w-4" /> Find cheapest nearby option</>}
           </Button>
-          {usingDemoData && <p className="text-xs text-amber-700">Demo mode active (no API key): showing realistic sample station prices.</p>}
           {error && <p className="text-sm text-red-600">{error}</p>}
         </CardContent>
       </Card>
@@ -187,35 +163,19 @@ export function FuelComparatorApp() {
                 <CardHeader className="flex-row items-start justify-between space-y-0">
                   <div>
                     <CardTitle className="text-base">{entry.station.brand || entry.station.name}</CardTitle>
-                    <p className="text-xs text-muted-foreground">
-                      {entry.station.street} {entry.station.houseNumber}, {entry.station.place} · {entry.station.dist.toFixed(1)} km
-                    </p>
+                    <p className="text-xs text-muted-foreground">{entry.station.street} {entry.station.houseNumber}, {entry.station.place} · {entry.station.dist.toFixed(1)} km</p>
                   </div>
                   {isBest && (
                     <motion.div initial={{ scale: 0.8 }} animate={{ scale: 1 }}>
-                      <Badge className="gap-1">
-                        <Trophy className="h-3 w-3" /> Cheapest
-                      </Badge>
+                      <Badge className="gap-1"><Trophy className="h-3 w-3" /> Cheapest</Badge>
                     </motion.div>
                   )}
                 </CardHeader>
                 <CardContent className="space-y-1 text-sm">
-                  <p>
-                    Listed: <strong>{formatPricePerLiter(entry.listedPrice)}</strong>
-                  </p>
-                  {entry.paybackPrice !== null && (
-                    <p>
-                      Payback effective: <strong>{formatPricePerLiter(entry.paybackPrice)}</strong>
-                    </p>
-                  )}
-                  {entry.circleKPrice !== null && (
-                    <p>
-                      Circle K effective: <strong>{formatPricePerLiter(entry.circleKPrice)}</strong>
-                    </p>
-                  )}
-                  <p className="pt-1 text-xs text-muted-foreground">
-                    Best option: {entry.bestOption.label} ({formatPricePerLiter(entry.bestOption.price)})
-                  </p>
+                  <p>Listed: <strong>{formatPricePerLiter(entry.listedPrice)}</strong></p>
+                  {entry.paybackPrice !== null && <p>Payback effective: <strong>{formatPricePerLiter(entry.paybackPrice)}</strong></p>}
+                  {entry.circleKPrice !== null && <p>Circle K effective: <strong>{formatPricePerLiter(entry.circleKPrice)}</strong></p>}
+                  <p className="pt-1 text-xs text-muted-foreground">Best option: {entry.bestOption.label} ({formatPricePerLiter(entry.bestOption.price)})</p>
                   {entry.breakEvenCents !== null && (
                     <p className="text-xs text-muted-foreground">
                       Break-even: Aral can be up to {entry.breakEvenCents.toFixed(2)} cents/L more expensive and still tie with Circle K.
